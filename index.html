@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BIOSPHERE — A Concepts of Biology Mystery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- 3D canvas mounts here -->
+  <div id="scene-root"></div>
+
+  <!-- Reticle / crosshair -->
+  <div id="reticle" class="hidden"><span></span></div>
+
+  <!-- Interaction prompt -->
+  <div id="prompt" class="hidden"></div>
+
+  <!-- Heads up display -->
+  <div id="hud" class="hidden">
+    <div id="hud-chapter">
+      <div id="hud-unit"></div>
+      <div id="hud-title"></div>
+    </div>
+    <div id="hud-objectives"></div>
+    <div id="hud-help">WASD move · Mouse look · <b>E</b> interact · <b>M</b> map · <b>Esc</b> release cursor</div>
+  </div>
+
+  <!-- Dialog / concept explainer -->
+  <div id="overlay" class="hidden">
+    <div id="panel">
+      <div id="panel-tag"></div>
+      <h2 id="panel-title"></h2>
+      <div id="panel-body"></div>
+      <div id="panel-actions"></div>
+    </div>
+  </div>
+
+  <!-- Title / menu screen -->
+  <div id="menu">
+    <div id="menu-inner">
+      <div id="menu-logo">BIOSPHERE</div>
+      <div id="menu-sub">A <i>Concepts of Biology</i> Mystery · 21 chapters · 6 units</div>
+      <p id="menu-story"></p>
+      <div id="menu-buttons"></div>
+      <div id="menu-foot">Based on OpenStax <i>Concepts of Biology</i> (CC&nbsp;BY&nbsp;4.0)</div>
+    </div>
+  </div>
+
+  <!-- Chapter map / journey -->
+  <div id="map" class="hidden">
+    <div id="map-inner">
+      <h2>The Journey Through Life</h2>
+      <div id="map-grid"></div>
+      <button id="map-close" class="btn">Close map</button>
+    </div>
+  </div>
+
+  <div id="loading">Loading the Biosphere…</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
