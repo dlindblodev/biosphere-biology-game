@@ -182,7 +182,8 @@ export const UI = {
   },
 
   /* ---------------- Map ---------------- */
-  showMap(units, chapters, progress, currentN) {
+  showMap(units, chapters, progress, currentN, onSelect) {
+    this._mapSelect = onSelect || null;
     let html = "";
     units.forEach((u) => {
       html += `<div class="unit-row">Unit ${u.n} — ${u.name}</div>`;
@@ -190,14 +191,29 @@ export const UI = {
         const done = progress.completed.includes(c.n);
         const current = c.n === currentN;
         const locked = c.n > progress.maxUnlocked;
+        const clickable = !locked && onSelect;
         const status = done ? "Mastered ✓" : current ? "Current" : locked ? "Locked" : "Available";
-        html += `<div class="mapcell ${done ? "done" : ""} ${current ? "current" : ""} ${locked ? "locked" : ""}">
+        html += `<div class="mapcell ${done ? "done" : ""} ${current ? "current" : ""} ${locked ? "locked" : ""} ${clickable ? "clickable" : ""}" ${clickable ? `data-ch="${c.n}"` : ""}>
           <div class="cn">Chapter ${c.n}</div><div class="ct">${c.title}</div><div class="cs">${status}</div></div>`;
       });
     });
     el.mapGrid.innerHTML = html;
+    // ensure a hint line exists above the grid
+    let hint = document.getElementById("map-hint");
+    if (!hint) { hint = document.createElement("div"); hint.id = "map-hint"; el.mapGrid.parentNode.insertBefore(hint, el.mapGrid); }
+    hint.innerHTML = `Select any <b>available</b> chamber to travel there.`;
+    // wire clicks
+    el.mapGrid.querySelectorAll(".mapcell.clickable").forEach((cell) => {
+      cell.onclick = () => { const n = parseInt(cell.dataset.ch, 10); if (this._mapSelect) this._mapSelect(n); };
+    });
     el.map.classList.remove("hidden");
     if (this.onOverlayOpen) this.onOverlayOpen();
+  },
+  toast(msg) {
+    const el2 = document.getElementById("toast");
+    el2.innerHTML = msg; el2.classList.add("show");
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => el2.classList.remove("show"), 2200);
   },
   hideMap() { el.map.classList.add("hidden"); if (this.onOverlayClose) this.onOverlayClose(); },
   bindMapClose(fn) { el.mapClose.onclick = fn; },

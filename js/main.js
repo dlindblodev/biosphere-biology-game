@@ -64,6 +64,7 @@ let chapter = null;
 let unit = null;
 let chState = null;          // { readConcepts:Set, passed:bool }
 let paused = true;
+let suppressPause = false;   // true during warp transitions / finale
 const clock = new THREE.Clock();
 
 /* ---------------- pointer-lock handling ---------------- */
@@ -73,7 +74,9 @@ UI.onOverlayClose = () => { if (!UI.isMapOpen() && !UI.isOverlayOpen() && !pause
 player.controls.addEventListener("lock", () => { player.enabled = true; paused = false; UI.setPrompt(""); Audio.start(); });
 player.controls.addEventListener("unlock", () => {
   player.enabled = false;
-  if (!UI.isOverlayOpen() && !UI.isMapOpen() && chapter) UI.setPrompt("<b>Click</b> to resume exploring");
+  if (suppressPause) return;
+  // genuine Esc with nothing else open → show the pause menu
+  if (!UI.isOverlayOpen() && !UI.isMapOpen() && chapter) showPauseMenu();
 });
 function tryLock() { if (chapter && !UI.isOverlayOpen() && !UI.isMapOpen()) player.lock(); }
 renderer.domElement.addEventListener("click", () => { if (chapter && !UI.isOverlayOpen() && !UI.isMapOpen()) tryLock(); });
@@ -152,6 +155,7 @@ function interact(it) {
 
 /* ---------------- transition ---------------- */
 function transitionTo(n) {
+  suppressPause = true;
   player.enabled = false;
   if (player.controls.isLocked) player.unlock();
   Audio.open(); Audio.warp();
@@ -162,7 +166,7 @@ function transitionTo(n) {
   // restart the CSS animation
   warp.classList.remove("go"); void warp.offsetWidth; warp.classList.add("go");
   setTimeout(() => { loadChapter(n, { showIntro: true }); }, 560);
-  setTimeout(() => { warp.classList.add("hidden"); warp.classList.remove("go"); }, 1150);
+  setTimeout(() => { warp.classList.add("hidden"); warp.classList.remove("go"); suppressPause = false; }, 1150);
 }
 
 function showFinale() {
@@ -183,9 +187,77 @@ function showFinale() {
 
 /* ---------------- map ---------------- */
 function openMap() {
-  UI.showMap(UNITS, CHAPTERS, progress, chapter ? chapter.n : 1);
+  UI.showMap(UNITS, CHAPTERS, progress, chapter ? chapter.n : 1, goToChapter);
 }
 UI.bindMapClose(() => { UI.hideMap(); tryLock(); });
+
+// travel to a chapter from the map (warps if already in-game)
+function goToChapter(n) {
+  if (n > progress.maxUnlocked) return;
+  UI.hideMap();
+  if (chapter) { transitionTo(n); return; }
+  // coming from the main menu
+  UI.hideMenu();
+  paused = false;
+  Audio.start();
+  audioBtn.classList.add("show");
+  loadChapter(n, { showIntro: true });
+}
+
+/* ---------------- help ---------------- */
+function showHelp() {
+  if (UI.isOverlayOpen() || UI.isMapOpen()) return;
+  UI.dialogue({
+    tag: "BIOSPHERE · How to Play",
+    title: "Field Manual",
+    bodyHTML:
+      `<div class="helix"><div class="av"></div><div>Welcome, Cadet. You explore the BIOSPHERE in first person, ` +
+      `one chamber per chapter of <i>Concepts of Biology</i>. Learn each chamber's concepts, pass its Challenge, ` +
+      `and walk through the unlocked door to the next.</div></div>` +
+      `<p style="margin-bottom:8px"><b style="color:var(--accent)">Your goal in each chamber</b></p>` +
+      `<p style="margin-top:0">① Scan the glowing <b>DATA nodes</b> (press <b>E</b>) to read the concepts. ` +
+      `② Activate the <b>◈ CHALLENGE</b> console and answer every question correctly to master the chapter. ` +
+      `③ The <b>EXIT</b> door opens — step into it to warp onward.</p>` +
+      `<p style="margin-bottom:8px"><b style="color:var(--accent)">Controls</b></p>` +
+      `<table style="width:100%;border-collapse:collapse;font-size:15px">` +
+      `<tr><td style="padding:4px 0;width:120px"><b>W A S D</b></td><td>Move</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>Mouse</b></td><td>Look around</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>E</b></td><td>Interact with the node you're facing</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>M</b></td><td>Open the Journey Map (travel between unlocked chambers)</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>H</b></td><td>Show this help</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>T</b> / ♪</td><td>Toggle sound</td></tr>` +
+      `<tr><td style="padding:4px 0"><b>Esc</b></td><td>Pause &amp; open the menu (quit to title here)</td></tr>` +
+      `</table>`,
+    actions: [{ label: "Got it ▸", onClick: () => { UI.closeOverlay(); if (chapter) tryLock(); } }],
+  });
+}
+
+/* ---------------- pause menu ---------------- */
+function showPauseMenu() {
+  UI.dialogue({
+    tag: chapter ? `Unit ${unit.n} · Chapter ${chapter.n}` : "BIOSPHERE",
+    title: "Paused",
+    bodyHTML: `<p>The Biosphere holds its breath. ${chapter ? "You are in <b>" + chapter.room + "</b>." : ""}</p>`,
+    actions: [
+      { label: "Resume ▸", onClick: () => { UI.closeOverlay(); tryLock(); } },
+      { label: "Journey Map", ghost: true, onClick: () => { UI.closeOverlay(); openMap(); } },
+      { label: "How to Play", ghost: true, onClick: () => { UI.closeOverlay(); showHelp(); } },
+      { label: "Quit to Title", ghost: true, onClick: () => quitToMenu() },
+    ],
+  });
+}
+
+function quitToMenu() {
+  UI.closeOverlay();
+  if (UI.isMapOpen()) UI.hideMap();
+  if (world) { world.dispose(); world = null; }
+  chapter = null; unit = null; chState = null;
+  paused = true;
+  UI.hideHUD();
+  UI.setPrompt("");
+  audioBtn.classList.remove("show");
+  showStartMenu();
+}
 
 /* ---------------- input ---------------- */
 window.addEventListener("keydown", (e) => {
@@ -194,7 +266,15 @@ window.addEventListener("keydown", (e) => {
     if (UI.isOverlayOpen()) return;
     if (UI.isMapOpen()) { UI.hideMap(); tryLock(); } else { if (player.controls.isLocked) player.unlock(); openMap(); }
   }
+  if (e.code === "KeyH") showHelp();
   if (e.code === "KeyT") toggleAudio();
+  // secret: U while the Journey Map is open unlocks every chamber
+  if (e.code === "KeyU" && UI.isMapOpen()) {
+    progress.maxUnlocked = 21;
+    saveProgress();
+    openMap(); // re-render with everything unlocked + clickable
+    UI.toast("✦ All 21 chambers unlocked — travel anywhere");
+  }
 });
 
 /* ---------------- audio toggle ---------------- */
@@ -225,6 +305,7 @@ function showStartMenu() {
     buttons.push({ label: "Begin the journey ▸", onClick: () => beginGame(1) });
   }
   buttons.push({ label: "Journey map", ghost: true, onClick: () => openMap() });
+  buttons.push({ label: "How to play", ghost: true, onClick: () => showHelp() });
   UI.showMenu(story, buttons);
 }
 
@@ -261,6 +342,11 @@ function animate() {
   } else if (player.enabled) {
     UI.setReticle(false);
     UI.setPrompt("");
+    lastTarget = null;
+  } else if (chapter && !UI.isOverlayOpen() && !UI.isMapOpen()) {
+    // in-game but cursor released (e.g., re-lock blocked by browser cooldown)
+    UI.setReticle(false);
+    UI.setPrompt("<b>Click</b> to resume exploring · <b>Esc</b> for menu");
     lastTarget = null;
   }
   composer.render();
