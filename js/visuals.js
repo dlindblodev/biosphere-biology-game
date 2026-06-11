@@ -443,7 +443,9 @@ B.development = () => {
   g.userData.update = (t) => {
     const s = Math.floor((t * 0.4) % 4); // 0..3 stages
     if (s !== stage) {
-      stage = s; cells.clear();
+      stage = s;
+      cells.children.forEach((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+      cells.clear();
       const n = [1, 2, 4, 16][s], r = [0.7, 0.5, 0.4, 0.25][s];
       for (let i = 0; i < n; i++) { const b = Math.acos(1 - 2 * (i + 0.5) / n), a = TAU * 0.618 * i; const rr = n === 1 ? 0 : 0.6; cells.add(ball(r, 0xff9bb0, Math.sin(b) * Math.cos(a) * rr, Math.cos(b) * rr, Math.sin(b) * Math.sin(a) * rr)); }
     }

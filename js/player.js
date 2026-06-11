@@ -15,6 +15,7 @@ export class Player {
     this.target = null;        // current interactable in focus
     this.enabled = false;
     this.bounds = { x: 8, z: 10 };
+    this.bobPhase = 0;         // head-bob accumulator
 
     window.addEventListener("keydown", (e) => { this.keys[e.code] = true; });
     window.addEventListener("keyup", (e) => { this.keys[e.code] = false; });
@@ -54,14 +55,18 @@ export class Player {
     if (hsp > cap) { this.velocity.x *= cap / hsp; this.velocity.z *= cap / hsp; }
     o.position.x += this.velocity.x * dt;
     o.position.z += this.velocity.z * dt;
-    o.position.y = this.height;
+    // head-bob driven by horizontal speed
+    const sp = Math.hypot(this.velocity.x, this.velocity.z);
+    this.bobPhase += dt * sp * 1.6;
+    const bob = Math.sin(this.bobPhase) * Math.min(sp / this.speed, 1) * 0.045;
+    o.position.y = this.height + bob;
 
     // soft collision with room bounds
     o.position.x = Math.max(-this.bounds.x, Math.min(this.bounds.x, o.position.x));
     o.position.z = Math.max(-this.bounds.z, Math.min(this.bounds.z, o.position.z));
-    // keep clear of central pedestal
+    // keep clear of central projector dais
     const distC = Math.hypot(o.position.x, o.position.z);
-    if (distC < 3.0) { const a = Math.atan2(o.position.z, o.position.x); o.position.x = Math.cos(a) * 3.0; o.position.z = Math.sin(a) * 3.0; }
+    if (distC < 3.4) { const a = Math.atan2(o.position.z, o.position.x); o.position.x = Math.cos(a) * 3.4; o.position.z = Math.sin(a) * 3.4; }
 
     // find focus interactable: nearest within radius and within view cone
     this.target = null;

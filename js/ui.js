@@ -1,6 +1,8 @@
 // ui.js — all DOM overlay management: menu, HUD, prompts, narrative concept
 // panels, the interactive challenge (quiz), journey map, and dialogue.
 
+import { Audio } from "./audio.js";
+
 const $ = (id) => document.getElementById(id);
 
 const el = {
@@ -128,6 +130,7 @@ export const UI = {
       const ok = i === q.c;
       results[idx] = ok;
       if (ok) correctCount++;
+      ok ? Audio.correct() : Audio.wrong();
       el.panelBody.querySelectorAll(".opt").forEach((b) => {
         const bi = parseInt(b.dataset.i, 10);
         b.disabled = true;
@@ -154,6 +157,7 @@ export const UI = {
     const finish = () => {
       const passed = correctCount === qs.length;
       const score = `${correctCount} / ${qs.length}`;
+      if (passed) Audio.success();
       if (passed) {
         this.dialogue({
           tag: `${chapter.room} · Challenge Passed`,

@@ -4,10 +4,16 @@
 // Curriculum adapted from OpenStax "Concepts of Biology" (CC BY 4.0).
 
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UNITS, CHAPTERS, chapterByNumber, unitOf } from "./curriculum.js";
 import { buildRoom } from "./world.js";
 import { Player } from "./player.js";
 import { UI } from "./ui.js";
+import { createEnvironment } from "./env.js";
+import { Audio } from "./audio.js";
 
 const SAVE_KEY = "biosphere.save.v1";
 
@@ -17,18 +23,31 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "hi
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 root.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 400);
 
 const player = new Player(camera, renderer.domElement);
 scene.add(player.object);
+
+// cosmic environment (sky, stars, reflection map) — persists across chapters
+const environment = createEnvironment(renderer, scene);
+
+// post-processing: bloom for the holographic glow
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.85, 0.6, 0.55);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 /* ---------------- progress ---------------- */
@@ -51,7 +70,7 @@ const clock = new THREE.Clock();
 UI.onOverlayOpen = () => { player.enabled = false; if (player.controls.isLocked) player.unlock(); };
 UI.onOverlayClose = () => { if (!UI.isMapOpen() && !UI.isOverlayOpen() && !paused) tryLock(); };
 
-player.controls.addEventListener("lock", () => { player.enabled = true; paused = false; UI.setPrompt(""); });
+player.controls.addEventListener("lock", () => { player.enabled = true; paused = false; UI.setPrompt(""); Audio.start(); });
 player.controls.addEventListener("unlock", () => {
   player.enabled = false;
   if (!UI.isOverlayOpen() && !UI.isMapOpen() && chapter) UI.setPrompt("<b>Click</b> to resume exploring");
@@ -100,7 +119,7 @@ function loadChapter(n, { showIntro = true } = {}) {
 function interact(it) {
   if (!it) return;
   if (it.type === "concept") {
-    const first = chState.readConcepts.size === 0;
+    Audio.scan();
     UI.showConcept(chapter, it.data.concept, false, null, () => {
       chState.readConcepts.add(it.data.index);
       world.markConceptRead(it.data.index);
@@ -135,13 +154,15 @@ function interact(it) {
 function transitionTo(n) {
   player.enabled = false;
   if (player.controls.isLocked) player.unlock();
-  const load = document.getElementById("loading");
-  load.textContent = "Traveling to the next chamber…";
-  load.classList.remove("hidden");
-  setTimeout(() => {
-    loadChapter(n);
-    setTimeout(() => load.classList.add("hidden"), 350);
-  }, 700);
+  Audio.open(); Audio.warp();
+  const warp = document.getElementById("warp");
+  const nextRoom = chapterByNumber(n).room;
+  document.getElementById("warp-label").textContent = "Entering · " + nextRoom;
+  warp.classList.remove("hidden");
+  // restart the CSS animation
+  warp.classList.remove("go"); void warp.offsetWidth; warp.classList.add("go");
+  setTimeout(() => { loadChapter(n, { showIntro: true }); }, 560);
+  setTimeout(() => { warp.classList.add("hidden"); warp.classList.remove("go"); }, 1150);
 }
 
 function showFinale() {
@@ -173,7 +194,17 @@ window.addEventListener("keydown", (e) => {
     if (UI.isOverlayOpen()) return;
     if (UI.isMapOpen()) { UI.hideMap(); tryLock(); } else { if (player.controls.isLocked) player.unlock(); openMap(); }
   }
+  if (e.code === "KeyT") toggleAudio();
 });
+
+/* ---------------- audio toggle ---------------- */
+const audioBtn = document.getElementById("audio-btn");
+function toggleAudio() {
+  const muted = Audio.toggleMute();
+  audioBtn.classList.toggle("muted", muted);
+  audioBtn.textContent = muted ? "♪̸" : "♪";
+}
+audioBtn.addEventListener("click", () => { Audio.start(); toggleAudio(); });
 
 /* ---------------- menu ---------------- */
 function showStartMenu() {
@@ -200,26 +231,39 @@ function showStartMenu() {
 function beginGame(n) {
   UI.hideMenu();
   paused = false;
+  Audio.start();
+  audioBtn.classList.add("show");
   loadChapter(n, { showIntro: true });
 }
 
 /* ---------------- loop ---------------- */
+let lastTarget = null;
+let lastStep = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
+  environment.update(t);
   if (world) world.update(t, dt);
   player.update(dt, world ? world.interactables : []);
+
+  // footsteps synced to head-bob
+  if (player.enabled) {
+    const seg = Math.floor(player.bobPhase / Math.PI);
+    if (seg !== lastStep) { if (Math.hypot(player.velocity.x, player.velocity.z) > 1.5) Audio.step(); lastStep = seg; }
+  }
 
   // prompt + reticle from focus target
   if (player.enabled && player.target) {
     UI.setReticle(true);
     UI.setPrompt(`<b>E</b> ${player.target.prompt()}`);
+    if (player.target !== lastTarget) { Audio.focus(); lastTarget = player.target; }
   } else if (player.enabled) {
     UI.setReticle(false);
     UI.setPrompt("");
+    lastTarget = null;
   }
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 /* ---------------- boot ---------------- */
